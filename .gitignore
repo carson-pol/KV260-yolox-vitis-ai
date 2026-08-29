@@ -1,0 +1,7 @@
+data/
+*.zip
+*.pth
+*.xmodel
+quantize_result/
+__pycache__/
+*.log
