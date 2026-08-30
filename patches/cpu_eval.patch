@@ -1,0 +1,46 @@
+--- code/tools/eval.py.orig	2026-08-30 16:39:40.487128095 -0600
++++ code/tools/eval.py	2026-08-30 16:44:22.971006710 -0600
+@@ -153,8 +153,9 @@
+     evaluator.per_class_AP = True
+     evaluator.per_class_AR = True
+ 
+-    torch.cuda.set_device(rank)
+-    model.cuda(rank)
++    if torch.cuda.is_available():
++        torch.cuda.set_device(rank)
++        model.cuda(rank)
+     model.eval()
+ 
+     if not args.speed and not args.trt:
+@@ -163,7 +164,7 @@
+         else:
+             ckpt_file = args.ckpt
+         logger.info("loading checkpoint from {}".format(ckpt_file))
+-        loc = "cuda:{}".format(rank)
++        loc = "cuda:{}".format(rank) if torch.cuda.is_available() else "cpu"
+         ckpt = torch.load(ckpt_file, map_location=loc)
+         model.load_state_dict(ckpt["model"])
+         logger.info("loaded checkpoint done.")
+--- code/yolox/evaluators/coco_evaluator.py.orig	2026-08-30 16:40:11.732010736 -0600
++++ code/yolox/evaluators/coco_evaluator.py	2026-08-30 16:47:24.718592286 -0600
+@@ -132,7 +132,10 @@
+             summary (sr): summary info of evaluation.
+         """
+         # TODO half to amp_test
+-        tensor_type = torch.cuda.HalfTensor if half else torch.cuda.FloatTensor
++        if torch.cuda.is_available():
++            tensor_type = torch.cuda.HalfTensor if half else torch.cuda.FloatTensor
++        else:
++            tensor_type = torch.HalfTensor if half else torch.FloatTensor
+         model = model.eval()
+         if half:
+             model = model.half()
+@@ -186,7 +189,7 @@
+             data_list.extend(data_list_elem)
+             output_data.update(image_wise_data)
+ 
+-        statistics = torch.cuda.FloatTensor([inference_time, nms_time, n_samples])
++        statistics = (torch.cuda.FloatTensor if torch.cuda.is_available() else torch.FloatTensor)([inference_time, nms_time, n_samples])
+         if distributed:
+             data_list = gather(data_list, dst=0)
+             output_data = gather(output_data, dst=0)
