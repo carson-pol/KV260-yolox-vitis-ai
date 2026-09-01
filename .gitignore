@@ -5,3 +5,4 @@ data/
 quantize_result/
 __pycache__/
 *.log
+!logs/*.log
