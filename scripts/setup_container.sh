@@ -77,12 +77,16 @@ fi
 
 # (d) run_quant.sh requests one GPU; quant.py asserts
 #     args.devices <= torch.cuda.device_count(), which is 0 here.
-F="$PKG/code/run_quant.sh"
-if grep -q '^GPU_NUM=1$' "$F"; then
-    cp "$F" "$F.orig" 2>/dev/null || true
-    sed -i 's|^GPU_NUM=1$|GPU_NUM=0|' "$F"
-    echo "   patched run_quant.sh (GPU_NUM)"
-fi
+for S in run_quant.sh run_eval.sh; do
+    F="$PKG/code/$S"
+    [ -f "$F" ] || continue
+    if grep -q '^GPU_NUM=1$' "$F"; then
+        cp "$F" "$F.orig" 2>/dev/null || true
+        sed -i 's|^GPU_NUM=1$|GPU_NUM=0|' "$F"
+        echo "   patched $S (GPU_NUM)"
+    fi
+done
+
 
 echo "== 4/4  Verify =="
 python - << 'PYEOF'
