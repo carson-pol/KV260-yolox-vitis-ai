@@ -170,3 +170,44 @@ is simply removed.
 - `scripts/setup_container.sh` — reproducible container setup
 - `quantize_result/YOLOX_0_int.xmodel` — quantized model, input to `vai_c_xir`
   (excluded by `.gitignore`)
+
+
+
+## On-target deployment — Day 4
+
+Compiled `quantize_result/YOLOX_0_int.xmodel` with `vai_c_xir` targeting
+`DPUCZDX8G_ISA1_B4096`. The board reports arch `DPUCZDX8G_ISA1_B4096`, fingerprint
+`0x101000056010407`, DPU IP v4.1.0 @ 300 MHz, VART 3.0.0, on image
+`xilinx-kv260-dpu-v2022.2-v3.0.0`.
+
+The compiler mapped all 808 ops to a **single DPU subgraph** with no CPU fallback
+inside the backbone. This is the payoff for using the model zoo's ReLU deploy
+variant with the pre-cut detection head rather than stock YOLOX-Nano: SiLU
+activations and the head's permute/view ops are unsupported by DPUCZDX8G and would
+have fragmented the graph across DPU and CPU subgraphs.
+
+### DPU throughput
+
+| Model | FPS (1 thread) | Frames / 60 s |
+| - | - | - |
+| This PTQ model | 242.228 | 14535 |
+| AMD precompiled control | 242.302 | 14539 |
+
+Measured with `xdputil benchmark`, which times **DPU execution only** and excludes
+host-side pre- and post-processing. End-to-end application throughput will be lower.
+The 0.03% gap against AMD's own precompiled model on identical hardware indicates
+the PTQ pipeline produced a functionally equivalent artifact.
+
+Deployed artifact md5: `41d578ce4e0fd48944011c007a5e9783`
+
+### Compilation is not bit-reproducible
+
+Recompiling from the same quantized model with the same command and the same
+container produces a byte-different xmodel (`84643990fa4d53d64aba90d399bcc1ca`
+vs the deployed `41d578ce...`). Both are presumed functionally equivalent; the
+cause has not yet been identified. `results/day4_compile_yolox_nano_ptq_rerun.log`
+is from the second compile and therefore reports the `84643990...` hash, while all
+throughput figures above were measured against the deployed `41d578ce...` artifact.
+
+Detection accuracy on hardware has not yet been validated — the benchmark
+confirms the model executes on the DPU, not that it detects correctly.
