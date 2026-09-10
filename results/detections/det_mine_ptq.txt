@@ -1,0 +1,7 @@
+detections: 5
+label 0  score 0.3396  box 430.8 152.7 473.8 302.7
+label 56  score 0.5977  box 209.3 234.0 295.3 319.9
+label 56  score 0.4965  box 380.1 215.6 432.2 325.9
+label 56  score 0.4110  box 292.7 215.6 359.6 325.9
+label 62  score 0.8503  box -17.1 160.2 164.8 270.5
+wrote /tmp/det_mine_ptq.jpg

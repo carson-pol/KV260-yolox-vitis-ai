@@ -1,0 +1,14 @@
+detections: 12
+label 56  score 0.7118  box 294.9 220.8 357.4 323.8
+label 56  score 0.5977  box 372.3 219.2 443.1 322.3
+label 58  score 0.4762  box 336.0 177.2 365.5 225.9
+label 58  score 0.4129  box 210.9 173.9 266.0 216.9
+label 58  score 0.4129  box 228.7 174.9 266.6 212.8
+label 58  score 0.3460  box 234.0 178.7 267.5 212.1
+label 58  score 0.3396  box 332.9 184.1 362.5 222.0
+label 62  score 0.7502  box 8.1 163.9 158.0 266.9
+label 62  score 0.5201  box 551.5 136.8 642.4 217.1
+label 62  score 0.4370  box 559.9 206.1 640.1 277.0
+label 74  score 0.4597  box 446.4 119.3 464.3 142.3
+label 74  score 0.3053  box 444.8 122.7 459.8 141.9
+wrote /tmp/det_amd_precompiled.jpg
