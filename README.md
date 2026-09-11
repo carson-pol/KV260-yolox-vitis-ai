@@ -1,12 +1,16 @@
-# YOLOX-Nano on Kria KV260 via Vitis AI 3.0
+# Quantized YOLOX deployed onto an FPGA
+I did this as my first personal project because I was interested in what deploying a model onto an edge device looked like and wanted to familiarize myself with the full model deployment pipeline. Even though I was interested in learning more about deployment as a whole, I found I particularly enjoyed the problem-solving involved, as even though I used an example model from the provided zoo, some problems still arose from my CPU only enviroment and the provided runner not working. In the future I want to apply my knowledge of the full pipeline to my own custom ML model, trained from a dataset I make myself, to try and better understand quantization-aware training and its limitations. 
 
-Quantized INT8 object detection on the DPUCZDX8G B4096 DPU.
+
+Technical details and insights below:
+
+Quantized INT8 YOLOX-Nano object detection on a Kria KV260 board via the DPUCZDX8G B4096 DPU
 
 ## Toolchain (pinned)
 - Vitis AI 3.0, image `xilinx/vitis-ai-pytorch-cpu:ubuntu2004-3.0.0.106`
 - Python 3.7.12, PyTorch 1.12.1 (CPU), torchvision 0.13.1+cpu
 - pytorch_nndct 3.0.0, conda env `vitis-ai-pytorch`
-- Host: Windows 11 + WSL2 (Ubuntu 22.04), CPU-only flow
+- Host: Windows 11 + WSL2 (Ubuntu 22.04), CPU-only
 
 **Why 3.0 and not newer:** Vitis AI 3.5 and later dropped pre-built board-image
 support for the KV260's Zynq UltraScale+ DPU. 3.0 is the last release shipping a
@@ -147,7 +151,7 @@ procedure producing the same numbers.
 Note PTQ never passes '--fast_finetune', but both files record `"bias_corrected": true`. Bias correction is part of nndct's
 default PTQ configuration, not an opt-in step. 
 
-### Where INT8 costs the most
+### INT8 performance impacts
 
 AP@.50 retains 72% of float performance while AP@.75 retains 58%. This tells us the model
 still finds objects but it places their boxes less precisely. The box regression
@@ -158,14 +162,14 @@ mode after quantization — AP-small was the weakest float metric at 0.062. It d
 retention it held up better than the 62% headline. The prediction was
 directionally reasonable and not the largest effect.
 
-### On the calibration set
+### Calibration set
 
 `run_quant.sh` passes no calibration data argument. AMD's reference PTQ flow calibrates on whatever dataloader the
 evaluation config builds, which is val2017, and as such the published 0.136 was produced by calibrating on 
 that. My originial plan was a seeded 500-image calibration draw from train2017, but after realizing this,
 I decided in order to validate the pipeline thouroughly to use val2017 as well. 
 
-### Environment reconstruction
+### Environment reconstruction/Scripting
 
 The Vitis AI container's writable layer is discarded on exit. Files under
 `/workspace` survive from the bind mount but `pip` installs and any editable install of
@@ -200,7 +204,7 @@ is simply removed.
 - `scripts/setup_container.sh` — reproducible container setup
 - `quantize_result/YOLOX_0_int.xmodel` — quantized model, input to `vai_c_xir`
   
-## On-target deployment
+## Board deployment
 
 Compiled `quantize_result/YOLOX_0_int.xmodel` with `vai_c_xir` targeting
 `DPUCZDX8G_ISA1_B4096`. The board reports arch `DPUCZDX8G_ISA1_B4096`, fingerprint
@@ -232,7 +236,7 @@ the PTQ pipeline produced a functionally equivalent throughput.
 
 Deployed artifact md5: `41d578ce4e0fd48944011c007a5e9783`
 
-## Three-way on-hardware comparison
+## Three-way comparison
 
 All three models run through the same custom runner (`src/run_yolox.cpp`,
 `vitis::ai::YOLOvX` API), same input image (COCO val2017 `000000000139`), same
@@ -276,10 +280,9 @@ Rather than debug a vendor sample, I decided to build a purpose-written runner:
 ### API
 
 The relevant class is `vitis::ai::YOLOvX`.
-Note the spelling — AMD's header uses YOLOvX, so a case-sensitive search for
+As AMD's header uses YOLOvX, a case-sensitive search for
 "yolox" misses it and returns only the protobuf definitions.
-
-The factory takes a **model name**, not an xmodel path:
+The factory takes a model name, not an xmodel path:
 
 ```cpp
 auto yolo = vitis::ai::YOLOvX::create("yolox_nano_ptq", true);
@@ -294,7 +297,7 @@ raw output tensors and nothing would convert them to labelled boxes.
 `run()` returns a `YOLOvXResult` whose `.bboxes` carry `.label`, `.score`, and a
 4-element `.box` of coordinates.
 
-### What the runner does
+### What my runner does
 
 Takes a model name, an input image and an output path. Reads the image with
 OpenCV, calls `run()`, prints each detection as label index, confidence and box
