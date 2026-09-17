@@ -1,0 +1,6 @@
+
+(run_yolox_frames:5662): GStreamer-CRITICAL **: 10:44:58.507: gst_element_make_from_uri: assertion 'gst_uri_is_valid (uri)' failed
+[ WARN:0] global /usr/src/debug/opencv/4.5.2-r0/git/modules/videoio/src/cap_gstreamer.cpp (854) open OpenCV | GStreamer warning: Error opening bin: no element "frames"
+[ WARN:0] global /usr/src/debug/opencv/4.5.2-r0/git/modules/videoio/src/cap_gstreamer.cpp (597) isPipelinePlaying OpenCV | GStreamer warning: GStreamer: pipeline have not been created
+frame 30frame 60frame 90frame 120frame 150frame 180frame 210frame 240frame 270frame 300frame 330frame 360frame 390frame 420frame 450frame 480frame 510frame 540frame 570frame 600frame 630frame 660frame 690frame 720frame 750frame 780frame 810frame 840frame 870frame 900
+frames 910  detections 1212  inference-only FPS 83.48  end-to-end FPS 6.25
