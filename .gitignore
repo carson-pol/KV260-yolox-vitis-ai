@@ -2,7 +2,8 @@ data/
 *.zip
 *.pth
 *.xmodel
+!compiled/**/*.xmodel
 quantize_result/
 __pycache__/
 *.log
-!logs/*.log
+!results/*.log
