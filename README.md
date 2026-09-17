@@ -40,11 +40,9 @@ I did this as my first personal project because I was interested in what deployi
 - pytorch_nndct 3.0.0, conda env `vitis-ai-pytorch`
 - Host: Windows 11 + WSL2 (Ubuntu 22.04), CPU-only
 
-**Why 3.0 and not newer:** Vitis AI 3.5 did not update Zynq UltraScale+ MPSoC
-support — its release notes direct MPSoC users back to 3.0, and the only board
-image 3.5 is tested against is the VEK280. 3.0 is the last release shipping a
+**Why 3.0 and not newer:** 3.0 is the last release shipped with a
 verified prebuilt KV260 SD image with a matching quantizer, compiler and runtime.
-The pin matters across release boundaries: the `DPUCZDX8G_ISA1_B4096`
+The pin matters across release boundaries also: the `DPUCZDX8G_ISA1_B4096`
 fingerprint is `0x101000016010407` in 2.5 and `0x101000056010407` in 3.0, and VART
 refuses to load an xmodel whose fingerprint doesn't match the hardware's. Quantizer,
 compiler, runtime and board image therefore all have to come from the same release.
@@ -53,8 +51,7 @@ compiler, runtime and board image therefore all have to come from the same relea
 
 **Host.** Vitis AI 3.0 repo at tag `v3.0`, PyTorch CPU container, COCO val2017 and
 train2017 under `<repo>/data/coco`. `scripts/setup_container.sh` restores the
-container state (explained later). Copy it to the root of your Vitis-AI tree first,
-since only that directory is bind-mounted into the container as `/workspace`.
+container state (explained later).
 
 ```
 cp scripts/setup_container.sh ~/vitis/Vitis-AI/
@@ -98,12 +95,12 @@ xmodel and the prototxt must all share one name:
     yolox_nano_ptq.prototxt
 ```
 
-The prototxt is copied from AMD's `yolox_nano_pt` package and renamed; it is
-architecture-level configuration and can be reused. Both files as deployed are
-committed under `compiled/yolox_nano_ptq/`, so this step can be done without
+The prototxt is just copied from AMD's `yolox_nano_pt` package and renamed; it is
+architecture-level configuration and can be reused. Both files which were deployed are
+committed at `compiled/yolox_nano_ptq/`, so this step can be done without
 re-running the quantizer or compiler.
 
-**Run**: (build command explained in Custom inference runner):
+**Run**: (build command explained in Custom inference runner section):
 
 ```
 ./run_yolox yolox_nano_ptq input.jpg output.jpg
@@ -128,7 +125,7 @@ Host: CPU-only container, batch 32, `--conf 0.001`
 Average forward time 8.42 ms (CPU, batch 32). Full log: `results/float_eval_val2017.log`
 
 My baseline matches the published figure exactly, confirming dataset paths,
-letterbox preprocessing (BGR, long side 416, pad (114,114,114)), and evaluator setup.
+preprocessing, and evaluator setup.
 
 ### CPU patch to model zoo evaluation tooling
 
@@ -143,8 +140,8 @@ without `--trt`. See `patches/cpu_eval.patch`.
 
 ### Expected quantization target
 
-AMD's package README documents this model's results: float 0.220, PTQ 0.136,
-QAT 0.210. Quantization-aware training (0.21) over full COCO is out of scope for me, so 
+AMD documents this model's results: float 0.22, PTQ 0.136,
+QAT 0.21. Quantization-aware training (0.21) over full COCO is out of scope for me, so 
 post-training quantization (0.136) is the target for the INT8 stage.
 
 
@@ -153,9 +150,8 @@ post-training quantization (0.136) is the target for the INT8 stage.
 I ran AMD's full shipped PTQ flow (`code/run_quant.sh`) on CPU: calibration,
 quantized evaluation, xmodel export.
 
-INT8 mAP landed at **0.136**, matching AMD's documented PTQ figure and the
-prediction/target committed to this README at `b219839` on 2026-08-30 — before the
-quantization run existed.
+My INT8 mAP landed at **0.136**, matching AMD's documented PTQ figure and the
+target committed to this README on 2026-08-30 — before I quantized.
 
 Metrics below are from the **test pass** (`results/quant_run.log`, line 1658).
 
@@ -171,14 +167,14 @@ Metrics below are from the **test pass** (`results/quant_run.log`, line 1658).
 
 ### Calibration scales are identical to AMD's reference
 
-My generated `quant_info.json` was diffed against the one AMD ships in the
+I diffed my generated `quant_info.json` against the one AMD ships in the
 package's `quantized/` directory:
 
     diff <(python3 -m json.tool quantize_result/quant_info.json) \
          <(python3 -m json.tool quantized/quant_info.json)
 
 Across 2,025 lines the only difference is a `version` metadata key. Every
-quantization scale matches exactly. The mAP agreement is therefore the same
+quantization scale matches exactly, and hence the mAP matching is a result of the same
 procedure producing the same numbers.
 
 Note PTQ never passes '--fast_finetune', but both files record `"bias_corrected": true`. Bias correction is part of nndct's
@@ -191,26 +187,25 @@ still finds objects but it places their boxes less precisely. The box regression
 head, not detection or classification, is the main casualty of INT8.
 
 I expected that small objects would be the dominant failure
-mode after quantization — AP-small was the weakest float metric at 0.062. It degraded, but at 66%
-retention it held up better than the 62% headline. The prediction was
-directionally reasonable and not the largest effect.
+mode after PTQ — AP-small was the weakest float metric at 0.062. It degraded, but with a 66%
+retention it actually held up better than the 62% headline. 
 
 ### Calibration set
 
-`run_quant.sh` passes no calibration data argument. AMD's reference PTQ flow calibrates on whatever dataloader the
+`run_quant.sh` does not take a calibration data argument. AMD's reference PTQ flow calibrates on whatever dataloader the
 evaluation config builds, which is val2017, and as such the published 0.136 was produced by calibrating on 
-that. My originial plan was a seeded 500-image calibration draw from train2017, but after realizing this,
+that. My originial plan was a seeded 500-image calibration from train2017, but after realizing this,
 I decided in order to validate the pipeline thouroughly to use val2017 as well. 
 
 Calibration and evaluation therefore share data, so 0.136 is not a clean
-generalization figure. It is a reproduction figure, and reproducing AMD's number
+generalized figure - it is a reproduction figure, and reproducing AMD's number
 was the point of this stage.
 
 ### Environment reconstruction/Scripting
 
 The Vitis AI container's writable layer is discarded on exit. Files under
 `/workspace` survive from the bind mount but `pip` installs and any editable install of
-`yolox` do not. Day 2's CPU patch had to be rebuilt, which is why I made the script
+`yolox` do not. I had to rebuild my CPU patch a day later, which is why I made the script
 `scripts/setup_container.sh` — container entry is now easier and reproducible.
 
 | Issue | Resolution |
@@ -251,17 +246,16 @@ Compiled `quantize_result/YOLOX_0_int.xmodel` with `vai_c_xir` targeting
 The compiler mapped all 808 ops to a single DPU subgraph with no CPU fallback
 inside the backbone. This is why I used the model zoo's ReLU deploy
 variant with the pre-cut detection head rather than stock YOLOX-Nano: SiLU
-activations and the head's permute/view ops are unsupported by DPUCZDX8G and would
-have fragmented the graph across DPU and CPU subgraphs.
+activations and the head's permute/view ops would have fragmented the graph across DPU and CPU subgraphs.
 
-Recompiling the same quantized model with the same command in the same container produced
+I did note that recompiling the same quantized model with the same command in the same container produced
 a byte-different xmodel (84643990... vs the deployed 41d578ce...). Both are functionally equivalent
 — the three-way comparison below was run against the deployed artifact. I did not identify the cause of the
 byte difference. 
 
-Worth contrasting: the float evaluation *is* reproducible. `results/float_eval_val2017.log`
-and a re-run a day later differ only in timestamps. The non-determinism is in the
-compiler, not the pipeline around it.
+Worth noting: the float evaluation is reproducible. `results/float_eval_val2017.log`
+and a re-run I did a day later differ by only timestamps. The non-determinism is in the
+compiler specifically, not the pipeline around it.
 
 Board bring-up log: `results/xdputil_query.json`.
 Compile logs: `results/compile_ptq_rerun.log`, `results/compile_amd_ptq.log`.
@@ -274,10 +268,10 @@ Compile logs: `results/compile_ptq_rerun.log`, `results/compile_amd_ptq.log`.
 | AMD precompiled control | 242.302 | 14539 |
 
 Measured with `xdputil benchmark`, which times DPU execution only and excludes
-host-side pre- and post-processing. Application throughput will be lower as such.
-The 0.03% gap against AMD's precompiled model on identical hardware confirms the
-compiled artifact executes with no throughput penalty against the vendor's.
-Functional equivalence is established separately in the three-way comparison below.
+host-side pre- and post-processing - application throughput will be lower.
+Only a 0.03% gap against AMD's precompiled model on identical hardware confirms my
+compiled artifact executes with no throughput penalty compared to AMD's.
+However, functional equivalence is established separately in the three-way comparison below.
 
 Raw logs: `results/bench_ptq.log`, `results/bench_amd_control.log`.
 
@@ -296,44 +290,42 @@ prototxt thresholds (conf 0.3, NMS 0.65), and of course same board.
 | `yolox_nano_pt` | AMD precompiled, shipped in the model zoo tarball | 12 |
 
 **My PTQ output and AMD's PTQ output produce identical detections** — same count,
-same labels, same confidence scores, same box coordinates to one decimal place.
+same labels, same confidence scores, same box coordinates.
 Combined with the earlier findings that `quant_info.json` quantization scales are
-identical and `bias_corr.pth` is byte-identical, this is end-to-end confirmation
+identical and `bias_corr.pth` is byte-identical, this is confirmation 
 that the PTQ pipeline in this repo reproduces AMD's.
 
 The annotated outputs are in fact byte-identical, not merely equivalent:
 `det_mine_ptq.jpg` and `det_amd_ptq.jpg` both hash to
-`6db26bde80822a3bb19071aba4925a1c`. Both files are committed, so this is checkable
-with `md5sum` on a clone.
+`6db26bde80822a3bb19071aba4925a1c`.
 
 The precompiled model shipped as `yolox_nano_pt-zcu102_zcu104_kv260-r3.0.0.tar.gz`
 is therefore not the PTQ model, despite being the deployable artifact in a package
 that documents a PTQ flow. It recovers detections both PTQ models miss (potted plants,
 a second and third TV, and two clocks). AMD's package README documents float 0.220,
 PTQ 0.136 and QAT 0.210 for this model; in my opinion, this gap is consistent with the
-precompiled artifact being the QAT variant, though this is not verified. Settling it
-would mean running COCO evaluation on the board against the precompiled model, which
-I judged not worth the time at this stage.
+precompiled artifact being the QAT variant, though this is not verified. Verifying this
+would mean running COCO evaluation on the board against the precompiled model, which would 
+take a while, so I did not do it.
 
 Detection output and annotated images: `results/detections/`
 
 ## Live inference demo
 
-60 seconds of handheld footage, 910 frames at 15 fps, run through the INT8 model on
-the KV260. Boxes and the running frame rate are drawn by the runner itself, not added
-in post. 1212 detections across 910 frames.
+60 seconds of handheld footage, 910 frames at 15 fps, run through on
+the KV260. Boxes and the running frame rate are drawn by the runner itself. 1212 detections across 910 frames.
 
 ![Four simultaneous detections](results/demo_frames/demo_four_detections.jpg)
 ![Close detection](results/demo_frames/demo_close_detection.jpg)
 ![Distant detection](results/demo_frames/demo_far_detection.jpg)
-![Two objects, one missed](results/demo_frames/demo_double_detection_miss.jpg)
+![One objects, two boxes](results/demo_frames/demo_double_detection_miss.jpg)
 
-The last frame is a miss — two objects, one box. Included deliberately; at 0.136 mAP
-this is the expected failure mode, not an anomaly.
+The last frame is a miss — one objects but two boxes. At 0.136 mAP,
+this is expected. 
 
 Full run output: `results/demo_run.txt`.
 
-### Throughput, and what each number includes
+### Throughput
 
 | Measurement | FPS | Covers |
 | - | - | - |
@@ -341,36 +333,28 @@ Full run output: `results/demo_run.txt`.
 | Inference-only | 83.48 | Library preprocess + DPU + postprocess/NMS, per frame |
 | End-to-end | 6.25 | The above plus JPEG decode and annotated-frame encode |
 
-The gap between the first two is the interesting one. `xdputil benchmark` isolates
-the DPU. The 83.48 figure is the same DPU doing the same work, but with the library's
-letterbox/resize/normalize preprocessing and its decode and NMS post-processing
-running on the Cortex-A53 cores around it. Roughly two thirds of per-frame
-wall-clock time is host-side work, not DPU work. Once the accelerator is fast enough,
-the ARM cores become the bottleneck, and further DPU optimization would buy very
-little here.
+The gap between the first two is interesting. `xdputil benchmark` isolates
+the DPU, and the 83.48 figure is the same DPU doing the same work, but additionally the library's
+letterbox/resize/normalize preprocessing, its decode and NMS post-processing
+running on the ARM cores around it. This means roughly two thirds of per-frame
+time is host-side work, not DPU work. Once the DPU is fast enough,
+the ARM cores become the bottleneck, meaning further DPU optimization wouldn't do much.
 
-The end-to-end figure is an artifact of the workaround described below rather than a
+The end-to-end FPS is due to the workaround described below rather than a
 property of the deployed system, since per-frame JPEG decode and re-encode is not what
-a real pipeline would do. It is included for completeness, not as a headline.
+a real pipeline would do.
 
 ### Why frames, not video
 
 The Vitis AI 3.0 KV260 board image ships OpenCV 4.5.2 with GStreamer, but not the
 plugin set needed to decode H.264. `VideoCapture` on an MP4 fails: the hardware
 decoder at `/dev/allegroDecodeIP` cannot be allocated, and the software fallback
-reports a missing plugin after `qtdemux` reads the container.
+reports a missing plugin.
 
 Rather than rebuild the image's media stack, frames are decoded on the host with
 `ffmpeg`, transferred, run through `src/run_yolox_frames.cpp` as a numbered sequence,
 and reassembled into video on the host afterwards. Detection, timing and annotation
 all happen on the board; only codec work is moved off it.
-
-I also looked at driving the KV260's MIPI camera interface directly. The Vitis AI
-board image has no sensor drivers — no `/dev/video*` node and nothing in `dmesg`.
-The usual fix is `xmutil loadapp kv260-smartcam`, but that belongs to the Kria
-accelerated-application flow and ships a B3136 DPU. Loading it would have replaced
-the B4096 bitstream every result above depends on and invalidated the compiled
-artifact, so I left it alone.
 
 ## Custom inference runner
 
@@ -383,7 +367,7 @@ output before the fault. `ldd` reports no missing libraries and the crash is ide
 with and without `DISPLAY` set, so its not a packaging problem nor does a headless OpenCV explain it.
 I couldn't determine the root cause. 
 
-Rather than debug a vendor sample, I decided to build a purpose-written runner:
+Rather than debug, I decided to build a custom runner:
 `src/run_yolox.cpp`.
 
 ### API
@@ -423,8 +407,7 @@ inference-only and end-to-end throughput separately at the end.
 
 ### Build
 
-Compiled natively on the board (`g++` is present on the Vitis AI 3.0 KV260 image;
-no cross-compilation or PetaLinux SDK needed)
+Compiled on the board
 
 ```
 g++ -std=c++17 -O2 -I/usr/include/opencv4 run_yolox.cpp -o run_yolox \
@@ -432,9 +415,6 @@ g++ -std=c++17 -O2 -I/usr/include/opencv4 run_yolox.cpp -o run_yolox \
     -lvart-runner -lxir -lglog \
     -lopencv_core -lopencv_imgproc -lopencv_imgcodecs
 ```
-
-`-I/usr/include/opencv4` is required — OpenCV 4 headers are not on the default
-include path, so `#include <opencv2/core.hpp>` fails without it.
 
 The frame-sequence runner additionally needs `-lopencv_videoio`:
 
@@ -445,17 +425,6 @@ g++ -std=c++17 -O2 -I/usr/include/opencv4 run_yolox_frames.cpp -o run_yolox_fram
     -lopencv_core -lopencv_imgproc -lopencv_imgcodecs -lopencv_videoio
 ```
 
-## Repository layout
-
-```
-compiled/yolox_nano_ptq/   the deployed xmodel and its prototxt
-patches/                   CPU patch to the model zoo eval tooling
-results/                   every log, metric and image behind the numbers above
-results/detections/        three-way comparison output
-results/demo_frames/       stills from the video demo
-scripts/                   container setup
-src/                       the two inference runners
-```
 
 ## License
 
